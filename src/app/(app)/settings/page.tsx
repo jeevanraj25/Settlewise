@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { getBaseUrl } from "@/lib/utils";
 import CopyButton from "@/components/CopyButton";
 import RegenerateTokenButton from "@/components/RegenerateTokenButton";
+import BusinessSettingsForm from "@/components/BusinessSettingsForm";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings — Settlewise" };
@@ -13,10 +14,15 @@ export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { name: true, email: true, businessName: true, mcpToken: true },
-  });
+  const [user, businessSettings] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { name: true, email: true, businessName: true, mcpToken: true },
+    }),
+    prisma.businessSettings.findUnique({
+      where: { userId: session.user.id },
+    }),
+  ]);
   if (!user) redirect("/login");
 
   // Automatically detect the live domain from request headers, falling back to getBaseUrl()
@@ -26,36 +32,44 @@ export default async function SettingsPage() {
   const appUrl = host ? `${proto}://${host}` : getBaseUrl();
   const mcpUrl = `${appUrl}/api/mcp?key=${user.mcpToken}`;
 
+  const initialSettings = {
+    businessName: businessSettings?.businessName || user.businessName || "",
+    businessEmail: businessSettings?.businessEmail || user.email || "",
+    address: businessSettings?.address || "",
+    taxInfo: businessSettings?.taxInfo || "",
+    defaultCurrency: businessSettings?.defaultCurrency || "INR",
+    paymentInstructions: businessSettings?.paymentInstructions || "",
+  };
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Manage your account profile and AI assistant connections.
+          Manage your business profile, payment instructions, and AI assistant connections.
         </p>
       </div>
 
-      {/* Account Card */}
+      {/* Account Info */}
       <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-xs">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">
           Account Profile
         </h2>
-        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
-            <dt className="text-gray-500 text-xs">Name</dt>
+            <dt className="text-gray-500 text-xs">Logged In User</dt>
             <dd className="text-gray-900 font-medium mt-0.5">{user.name}</dd>
           </div>
           <div>
-            <dt className="text-gray-500 text-xs">Email</dt>
+            <dt className="text-gray-500 text-xs">Login Email</dt>
             <dd className="text-gray-900 font-medium mt-0.5">{user.email}</dd>
           </div>
-          <div>
-            <dt className="text-gray-500 text-xs">Business</dt>
-            <dd className="text-gray-900 font-medium mt-0.5">
-              {user.businessName || "Not configured"}
-            </dd>
-          </div>
         </dl>
+      </section>
+
+      {/* Business Details & Payment Instructions Form (Requirement 4) */}
+      <section className="space-y-4">
+        <BusinessSettingsForm initialSettings={initialSettings} />
       </section>
 
       {/* Claude MCP Integration Card */}
