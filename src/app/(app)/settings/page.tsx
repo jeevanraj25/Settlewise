@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { regenerateMcpToken } from "@/app/actions/settings";
+import { getBaseUrl } from "@/lib/utils";
 import CopyButton from "@/components/CopyButton";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default async function SettingsPage() {
   });
   if (!user) redirect("/login");
 
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = getBaseUrl();
   const mcpUrl = `${appUrl}/api/mcp?key=${user.mcpToken}`;
 
   return (

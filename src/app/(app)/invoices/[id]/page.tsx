@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deriveInvoiceStatus, STATUS_META } from "@/lib/invoice-status";
 import { formatPaise } from "@/lib/money";
+import { getBaseUrl } from "@/lib/utils";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -39,7 +40,7 @@ export default async function InvoiceDetailPage({
   const paidPaise = invoice.payments.reduce((s, p) => s + p.amountPaise, 0);
   const balancePaise = invoice.totalPaise - paidPaise;
 
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = getBaseUrl();
   const publicUrl = `${appUrl}/i/${invoice.publicToken}`;
 
   return (

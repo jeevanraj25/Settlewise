@@ -16,7 +16,7 @@ import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { computeInvoiceTotals, rupeesToPaise } from "@/lib/money";
-import { generateToken, formatInvoiceNumber } from "@/lib/utils";
+import { generateToken, formatInvoiceNumber, getBaseUrl } from "@/lib/utils";
 import { todayIST, deriveInvoiceStatus } from "@/lib/invoice-status";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { Prisma } from "@prisma/client";
@@ -207,7 +207,7 @@ the hosted public URL the customer can open to view and pay the invoice.
           payments: [],
         });
 
-        const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+        const appUrl = getBaseUrl();
         const hostedUrl = `${appUrl}/i/${invoice.publicToken}`;
         const totalDisplay = new Intl.NumberFormat("en-IN", {
           style: "currency",
