@@ -12,12 +12,32 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Ensure all form inputs have high contrast visible text across all browsers and themes */
+/* Force solid, high-contrast black text on all form elements across all browsers & extensions */
 input, textarea, select {
   color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
   background-color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+input:focus, textarea:focus, select:focus {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+/* Fix browser autofill grey text issue */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #111827 !important;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 input::placeholder, textarea::placeholder {
   color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
 }
