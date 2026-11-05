@@ -26,6 +26,12 @@ export default async function AppLayout({
               Invoices
             </Link>
             <Link
+              href="/customers"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Customers
+            </Link>
+            <Link
               href="/settings"
               className="text-sm text-gray-600 hover:text-gray-900"
             >
