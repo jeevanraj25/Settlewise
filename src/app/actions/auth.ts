@@ -63,15 +63,22 @@ export async function loginAction(
   _state: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  const email = (formData.get("email") as string | null)?.trim().toLowerCase();
+  const password = formData.get("password") as string | null;
+
+  if (!email || !password) {
+    return { message: "Please enter both email and password." };
+  }
+
   try {
     await signIn("credentials", {
-      email: formData.get("email"),
-      password: formData.get("password"),
+      email,
+      password,
       redirectTo: "/invoices",
     });
   } catch (err) {
     if (err instanceof AuthError) {
-      return { message: "Invalid email or password." };
+      return { message: "Invalid email or password. Please check your credentials." };
     }
     // redirect() throws internally — rethrow it
     throw err;
