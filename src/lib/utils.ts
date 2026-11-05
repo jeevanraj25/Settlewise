@@ -12,18 +12,26 @@ export function formatInvoiceNumber(seq: number): string {
 }
 
 /**
- * Get base URL of the application.
- * Respects APP_URL env var, falls back to Vercel auto-provided domain, then localhost.
+ * Single source of truth for the application's base URL.
+ * Automatically handles:
+ * 1. APP_URL from .env
+ * 2. NEXTAUTH_URL from .env
+ * 3. Vercel auto-injected production URL (VERCEL_PROJECT_PRODUCTION_URL)
+ * 4. Vercel deployment URL (VERCEL_URL)
+ * 5. Localhost fallback
  */
 export function getBaseUrl(): string {
   if (process.env.APP_URL) {
-    return process.env.APP_URL.replace(/\/$/, "");
+    return process.env.APP_URL.replace(/\/+$/, "");
+  }
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL.replace(/\/+$/, "");
   }
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/\/+$/, "")}`;
   }
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+    return `https://${process.env.VERCEL_URL.replace(/\/+$/, "")}`;
   }
   return "http://localhost:3000";
 }
