@@ -12,7 +12,7 @@
  * and embeds userId in authInfo.extra so tool callbacks can retrieve it.
  */
 
-import { createMcpHandler, withMcpAuth } from "mcp-handler";
+import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { computeInvoiceTotals, rupeesToPaise } from "@/lib/money";
@@ -313,29 +313,103 @@ the hosted public URL the customer can open to view and pay the invoice.
 );
 
 // ---------------------------------------------------------------------------
-// Auth wrapper — reads ?key= query param, resolves to user, sets authInfo
+// Auth & Request handling (No OAuth — simple token auth per Rule 4)
 // ---------------------------------------------------------------------------
-async function verifyToken(req: Request): Promise<AuthInfo | undefined> {
+async function handleMcpRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const key = url.searchParams.get("key");
-  if (!key) return undefined;
+
+  // Allow token from query param (?key=...) OR Bearer header
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : null;
+  const key = url.searchParams.get("key") || bearerToken;
+
+  if (!key) {
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized: Missing authentication key (?key=TOKEN or Bearer token)",
+      }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
 
   const user = await prisma.user.findUnique({
     where: { mcpToken: key },
     select: { id: true, email: true },
   });
-  if (!user) return undefined;
 
-  return {
+  if (!user) {
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized: Invalid authentication key",
+      }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
+
+  // Attach auth context so MCP tool callbacks can read ctx.http.authInfo.extra.userId
+  const authInfo: AuthInfo = {
     token: key,
     clientId: user.id,
     scopes: [],
     extra: { userId: user.id },
   };
+  (req as any).auth = authInfo;
+
+  try {
+    const res = await mcpHandler(req);
+    const headers = new Headers(res.headers);
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, Accept, x-mcp-version, mcp-session-id"
+    );
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
+  } catch (error) {
+    console.error("MCP handler error:", error);
+    return new Response(
+      JSON.stringify({ error: "Internal Server Error" }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
 }
 
-const authenticatedHandler = withMcpAuth(mcpHandler, verifyToken, {
-  required: true,
-});
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, Accept, x-mcp-version, mcp-session-id",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
+}
 
-export { authenticatedHandler as GET, authenticatedHandler as POST };
+export { handleMcpRequest as GET, handleMcpRequest as POST };
