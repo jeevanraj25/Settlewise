@@ -203,7 +203,7 @@ export default async function PublicInvoicePage({
           </div>
         )}
 
-        <p className="text-center text-xs text-gray-400 mt-6">Powered by Collectly</p>
+        <p className="text-center text-xs text-gray-400 mt-6">Powered by Settlewise</p>
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ export default async function AppLayout({
         <div className="mx-auto max-w-6xl px-4 sm:px-6 flex h-14 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link href="/invoices" className="text-lg font-bold text-indigo-600">
-              Collectly
+            Settlewise
             </Link>
             <Link
               href="/invoices"

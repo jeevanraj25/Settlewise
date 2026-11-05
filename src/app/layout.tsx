@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Collectly — Invoice & Collections for Indian Freelancers",
+  title: "Settlewise — Invoice & Collections for Indian Freelancers",
   description: "Create invoices, track payments, and get paid faster.",
 };
 

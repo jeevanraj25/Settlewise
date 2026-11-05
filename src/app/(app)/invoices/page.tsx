@@ -6,7 +6,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Invoices — Collectly" };
+export const metadata = { title: "Invoices — Settlewise" };
 
 export default async function InvoicesPage() {
   const session = await auth();

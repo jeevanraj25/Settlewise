@@ -1,5 +1,5 @@
 /**
- * Collectly MCP Server — Streamable HTTP (stateless)
+ * Settlewise MCP Server — Streamable HTTP (stateless)
  *
  * Endpoint: GET/POST /api/mcp?key=TOKEN
  * No OAuth. The ?key= query param is resolved to a user on every request.
@@ -18,8 +18,8 @@ import { prisma } from "@/lib/prisma";
 import { computeInvoiceTotals, rupeesToPaise } from "@/lib/money";
 import { generateToken, formatInvoiceNumber } from "@/lib/utils";
 import { todayIST, deriveInvoiceStatus } from "@/lib/invoice-status";
-// AuthInfo gives us typed access to ctx.authInfo populated by withMcpAuth
 import type { AuthInfo } from "@modelcontextprotocol/server";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,7 @@ const mcpHandler = createMcpHandler(
       {
         title: "Create Invoice",
         description: `
-Create a new invoice for the authenticated Collectly user and issue it immediately.
+Create a new invoice for the authenticated Settlewise user and issue it immediately.
 
 CUSTOMER: Pass an existing customer_id, OR provide customer_name + customer_email
 to find-or-create a customer. Email matching is case-insensitive to avoid duplicates.
@@ -308,7 +308,7 @@ the hosted public URL the customer can open to view and pay the invoice.
     );
   },
   {
-    serverInfo: { name: "collectly", version: "1.0.0" },
+    serverInfo: { name: "settlewise", version: "1.0.0" },
   }
 );
 

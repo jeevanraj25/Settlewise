@@ -15,7 +15,7 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-md bg-white rounded-xl shadow p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h1>
-        <p className="text-sm text-gray-500 mb-6">Log in to your Collectly account</p>
+        <p className="text-sm text-gray-500 mb-6">Log in to your Settlewise account</p>
 
         {registered && (
           <div className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">

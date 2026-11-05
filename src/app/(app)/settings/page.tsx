@@ -5,7 +5,7 @@ import { regenerateMcpToken } from "@/app/actions/settings";
 import CopyButton from "@/components/CopyButton";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Settings — Collectly" };
+export const metadata = { title: "Settings — Settlewise" };
 
 export default async function SettingsPage() {
   const session = await auth();
