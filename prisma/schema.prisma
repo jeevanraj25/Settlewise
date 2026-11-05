@@ -1,0 +1,150 @@
+// Collectly — Prisma schema
+// Money: all amounts in paise (integer). Never use Float for money.
+// Invoice status is DERIVED at read time, never stored.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  businessName String   @default("")
+  mcpToken     String   @unique @default(cuid()) // used to authenticate MCP requests
+  createdAt    DateTime @default(now())
+
+  invoices         Invoice[]
+  customers        Customer[]
+  businessSettings BusinessSettings?
+
+  @@index([email])
+  @@index([mcpToken])
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  companyName    String   @default("")
+  email          String
+  phone          String   @default("")
+  billingAddress String   @default("")
+  createdAt      DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@unique([userId, email]) // prevent duplicate customers per user (case-insensitive handled in app logic)
+  @@index([userId])
+}
+
+model Invoice {
+  id           String    @id @default(cuid())
+  userId       String
+  customerId   String
+  number       String // INV-0001, sequential per user
+  publicToken  String    @unique // 24+ char random token for /i/<token>
+  invoiceDate  DateTime  @db.Date
+  dueDate      DateTime  @db.Date
+  currency     String    @default("INR")
+  // All amounts in paise (integer). Computed server-side.
+  subtotalPaise Int       @default(0)
+  taxPaise      Int       @default(0)
+  discountPaise Int       @default(0)
+  totalPaise    Int       @default(0)
+  // state: draft | issued | cancelled. Status is DERIVED (see lib/invoice-status.ts)
+  state        String    @default("draft")
+  notes        String    @default("")
+  viewedAt     DateTime?
+  viewCount    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer Customer      @relation(fields: [customerId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+  views    InvoiceView[]
+  reminders Reminder[]
+
+  @@index([userId])
+  @@index([customerId])
+  @@index([publicToken])
+  @@index([userId, state])
+}
+
+model InvoiceItem {
+  id            String @id @default(cuid())
+  invoiceId     String
+  description   String
+  quantity      Int    @default(1) // stored as integer; fractional qty not supported in v1
+  unitPricePaise Int
+  totalPaise    Int    // = quantity * unitPricePaise, computed server-side
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  amountPaise  Int
+  paymentDate  DateTime @db.Date
+  method       String   @default("") // e.g. bank_transfer, upi, cash
+  reference    String   @default("")
+  verification String   @default("manual") // always "manual" for user-entered payments
+  createdAt    DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model InvoiceView {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  viewedAt    DateTime @default(now())
+  visitorHash String   @default("") // hashed IP/UA for dedup
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Reminder {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  type        String    // e.g. "due_soon", "overdue_3d", "first_reminder"
+  scheduledAt DateTime
+  status      String    @default("pending") // pending | sent | skipped | cancelled
+  sentAt      DateTime?
+  subject     String    @default("")
+  message     String    @default("")
+  simulated   Boolean   @default(true) // always true in dev/test mode
+  createdAt   DateTime  @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, type])
+  @@index([invoiceId])
+  @@index([status, scheduledAt])
+}
+
+model BusinessSettings {
+  userId              String @id
+  businessName        String @default("")
+  businessEmail       String @default("")
+  address             String @default("")
+  taxInfo             String @default("") // e.g. GST number
+  defaultCurrency     String @default("INR")
+  paymentInstructions String @default("")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
