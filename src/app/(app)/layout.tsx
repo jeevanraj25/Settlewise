@@ -1,6 +1,7 @@
 import { auth, signOut } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import Link from "next/link";
+import AppSidebar from "@/components/AppSidebar";
 
 export default async function AppLayout({
   children,
@@ -8,62 +9,28 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user) redirect("/login");
+  if (!session?.user?.id) redirect("/login");
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { name: true, email: true, businessName: true },
+  });
+
+  const handleLogout = async () => {
+    "use server";
+    await signOut({ redirectTo: "/login" });
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top nav */}
-      <nav className="bg-white border-b border-gray-200">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex h-14 items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link href="/invoices" className="text-lg font-bold text-indigo-600">
-            Settlewise
-            </Link>
-            <Link
-              href="/invoices"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Invoices
-            </Link>
-            <Link
-              href="/customers"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Customers
-            </Link>
-            <Link
-              href="/reminders"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Reminders
-            </Link>
-            <Link
-              href="/settings"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Settings
-            </Link>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{session.user.name}</span>
-            <form
-              action={async () => {
-                "use server";
-                await signOut({ redirectTo: "/login" });
-              }}
-            >
-              <button
-                type="submit"
-                className="text-sm text-gray-500 hover:text-gray-900"
-              >
-                Log out
-              </button>
-            </form>
-          </div>
-        </div>
-      </nav>
-
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">{children}</main>
-    </div>
+    <AppSidebar
+      user={{
+        name: user?.name || session.user.name,
+        email: user?.email || session.user.email,
+        businessName: user?.businessName,
+      }}
+      logoutAction={handleLogout}
+    >
+      {children}
+    </AppSidebar>
   );
 }

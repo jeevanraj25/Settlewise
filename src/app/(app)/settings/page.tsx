@@ -75,7 +75,7 @@ export default async function SettingsPage() {
       </section>
 
       {/* Claude MCP Integration Card */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-xs">
+      <section id="mcp" className="bg-white rounded-xl border border-gray-200 p-6 shadow-xs scroll-mt-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-gray-900">

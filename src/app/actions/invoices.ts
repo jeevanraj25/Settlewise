@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeInvoiceTotals, rupeesToPaise } from "@/lib/money";
 import { scheduleInvoiceReminders } from "@/lib/reminders";
+import { formatInvoiceNumber, generateToken } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -303,4 +304,190 @@ export async function recordPaymentAction(
   revalidatePath("/invoices");
   revalidatePath("/customers");
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Create invoice in the UI (Mirrors Claude MCP create_invoice capabilities)
+// ---------------------------------------------------------------------------
+const createInvoiceSchema = z.object({
+  customerId: z.string().optional(),
+  newCustomerName: z.string().optional(),
+  newCustomerEmail: z.string().optional(),
+  newCustomerCompany: z.string().optional(),
+  invoiceDate: z.string().min(1, "Invoice date is required"),
+  dueDate: z.string().min(1, "Due date is required"),
+  currency: z.string().default("INR"),
+  taxPercent: z.coerce.number().min(0).max(100).default(0),
+  discountRupees: z.coerce.number().min(0).default(0),
+  notes: z.string().default(""),
+  paymentInstructions: z.string().default(""),
+});
+
+export type CreateInvoiceResult = {
+  success?: boolean;
+  invoiceId?: string;
+  message?: string;
+  errors?: Record<string, string[]>;
+};
+
+export async function createInvoiceAction(
+  _prevState: CreateInvoiceResult | undefined,
+  formData: FormData
+): Promise<CreateInvoiceResult> {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
+
+  const rawData = {
+    customerId: formData.get("customerId") as string,
+    newCustomerName: formData.get("newCustomerName") as string,
+    newCustomerEmail: formData.get("newCustomerEmail") as string,
+    newCustomerCompany: formData.get("newCustomerCompany") as string,
+    invoiceDate: formData.get("invoiceDate") as string,
+    dueDate: formData.get("dueDate") as string,
+    currency: (formData.get("currency") as string) || "INR",
+    taxPercent: formData.get("taxPercent") ?? 0,
+    discountRupees: formData.get("discountRupees") ?? 0,
+    notes: (formData.get("notes") as string) || "",
+    paymentInstructions: (formData.get("paymentInstructions") as string) || "",
+  };
+
+  const parsed = createInvoiceSchema.safeParse(rawData);
+  if (!parsed.success) {
+    return { errors: parsed.error.flatten().fieldErrors };
+  }
+
+  // Parse line items JSON
+  const rawItems = formData.get("lineItems");
+  let itemsList: Array<{ description: string; quantity: number; unitPrice: number }>;
+  try {
+    itemsList = JSON.parse(rawItems as string);
+    if (!Array.isArray(itemsList) || itemsList.length === 0) {
+      return { message: "At least one line item is required." };
+    }
+  } catch {
+    return { message: "Invalid line items format." };
+  }
+
+  for (const item of itemsList) {
+    if (!item.description || item.description.trim().length === 0) {
+      return { message: "All line items must have a description." };
+    }
+    if (item.quantity <= 0) {
+      return { message: "Line item quantities must be greater than 0." };
+    }
+    if (item.unitPrice < 0) {
+      return { message: "Line item unit prices cannot be negative." };
+    }
+  }
+
+  // Resolve Customer
+  let resolvedCustomerId = parsed.data.customerId;
+  if (!resolvedCustomerId || resolvedCustomerId === "new") {
+    const custName = parsed.data.newCustomerName?.trim();
+    const custEmail = parsed.data.newCustomerEmail?.trim().toLowerCase();
+    const custCompany = parsed.data.newCustomerCompany?.trim() || "";
+
+    if (!custName || !custEmail) {
+      return { message: "Please select an existing customer or provide customer name and email." };
+    }
+
+    // Check if customer already exists for this user
+    let existingCust = await prisma.customer.findFirst({
+      where: { userId, email: custEmail },
+    });
+
+    if (existingCust) {
+      resolvedCustomerId = existingCust.id;
+    } else {
+      const createdCust = await prisma.customer.create({
+        data: {
+          userId,
+          name: custName,
+          email: custEmail,
+          companyName: custCompany,
+        },
+      });
+      resolvedCustomerId = createdCust.id;
+    }
+  } else {
+    // Verify customer belongs to this user
+    const cust = await prisma.customer.findFirst({
+      where: { id: resolvedCustomerId, userId },
+    });
+    if (!cust) return { message: "Selected customer not found." };
+  }
+
+  // Compute totals in integer paise (Rule #3)
+  const lineItemsInPaise = itemsList.map((item) => ({
+    description: item.description.trim(),
+    quantity: Math.round(item.quantity),
+    unitPricePaise: rupeesToPaise(item.unitPrice),
+    totalPaise: Math.round(item.quantity) * rupeesToPaise(item.unitPrice),
+  }));
+
+  const discountPaise = rupeesToPaise(parsed.data.discountRupees);
+  const { subtotalPaise, taxPaise, totalPaise } = computeInvoiceTotals(
+    lineItemsInPaise,
+    parsed.data.taxPercent,
+    discountPaise
+  );
+
+  const count = await prisma.invoice.count({ where: { userId } });
+  const invoiceNumber = formatInvoiceNumber(count + 1);
+  const publicToken = generateToken(24);
+
+  const invoice = await prisma.$transaction(async (tx) => {
+    const inv = await tx.invoice.create({
+      data: {
+        userId,
+        customerId: resolvedCustomerId!,
+        number: invoiceNumber,
+        publicToken,
+        invoiceDate: new Date(`${parsed.data.invoiceDate}T00:00:00+05:30`),
+        dueDate: new Date(`${parsed.data.dueDate}T00:00:00+05:30`),
+        currency: parsed.data.currency,
+        subtotalPaise,
+        taxPaise,
+        discountPaise,
+        totalPaise,
+        state: "issued",
+        notes: parsed.data.notes,
+      },
+    });
+
+    await tx.invoiceItem.createMany({
+      data: lineItemsInPaise.map((item) => ({
+        invoiceId: inv.id,
+        description: item.description,
+        quantity: item.quantity,
+        unitPricePaise: item.unitPricePaise,
+        totalPaise: item.totalPaise,
+      })),
+    });
+
+    // Update business payment instructions if provided
+    if (parsed.data.paymentInstructions) {
+      await tx.businessSettings.upsert({
+        where: { userId },
+        create: {
+          userId,
+          paymentInstructions: parsed.data.paymentInstructions,
+        },
+        update: {
+          paymentInstructions: parsed.data.paymentInstructions,
+        },
+      });
+    }
+
+    return inv;
+  });
+
+  // Auto-schedule reminders if enabled (Phase 5)
+  await scheduleInvoiceReminders(invoice.id).catch(() => {});
+
+  revalidatePath("/overview");
+  revalidatePath("/invoices");
+  revalidatePath("/customers");
+  return { success: true, invoiceId: invoice.id };
 }

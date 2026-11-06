@@ -2,14 +2,20 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deriveInvoiceStatus } from "@/lib/invoice-status";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import InvoicesTable, { InvoiceRow } from "@/components/InvoicesTable";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Invoices — Settlewise" };
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+  const { status: initialStatus } = await searchParams;
 
   // Rule 4: Scoped by userId
   const invoices = await prisma.invoice.findMany({
@@ -63,6 +69,12 @@ export default async function InvoicesPage() {
             Track receivables, record client payments, and monitor overdue accounts.
           </p>
         </div>
+        <Link
+          href="/invoices/new"
+          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-xs"
+        >
+          <span>+</span> Create Invoice
+        </Link>
       </div>
 
       {invoiceRows.length === 0 ? (
@@ -73,12 +85,18 @@ export default async function InvoicesPage() {
             </svg>
           </div>
           <h3 className="text-base font-semibold text-gray-900">No invoices yet</h3>
-          <p className="text-sm text-gray-500 max-w-sm mx-auto mt-1">
-            Ask Claude to generate your first invoice via the MCP endpoint, or visit Settings to copy your MCP URL.
+          <p className="text-sm text-gray-500 max-w-sm mx-auto mt-1 mb-4">
+            Issue your first invoice or ask Claude to generate one via the MCP endpoint.
           </p>
+          <Link
+            href="/invoices/new"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-xs"
+          >
+            Create First Invoice
+          </Link>
         </div>
       ) : (
-        <InvoicesTable invoices={invoiceRows} />
+        <InvoicesTable invoices={invoiceRows} initialStatus={initialStatus} />
       )}
     </div>
   );

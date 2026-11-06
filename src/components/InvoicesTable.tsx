@@ -35,9 +35,15 @@ const STATUS_FILTERS: Array<{ id: string; label: string }> = [
   { id: "cancelled", label: "Cancelled" },
 ];
 
-export default function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
+export default function InvoicesTable({
+  invoices,
+  initialStatus = "all",
+}: {
+  invoices: InvoiceRow[];
+  initialStatus?: string;
+}) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(initialStatus || "all");
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 

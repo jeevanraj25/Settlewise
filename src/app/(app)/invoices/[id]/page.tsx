@@ -159,31 +159,6 @@ export default async function InvoiceDetailPage({
             </div>
           </div>
         </div>
-
-        {/* Public link banner (Requirement 4) */}
-        {invoice.state !== "draft" ? (
-          <div className="mt-4 flex items-center justify-between bg-gray-50/80 rounded-lg border border-gray-200 px-3 py-2 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-gray-400 shrink-0 font-medium">Public link:</span>
-              <span className="font-mono text-gray-700 truncate">{publicUrl}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 ml-3">
-              <CopyButton text={publicUrl} />
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-800 font-medium hover:underline text-xs"
-              >
-                Open ↗
-              </a>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-2.5 text-xs text-yellow-800">
-            This is a <strong>Draft</strong> invoice. Drafts are private and do not have a public link.
-          </div>
-        )}
       </div>
 
       {/* Line items card */}

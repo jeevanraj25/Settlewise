@@ -218,6 +218,42 @@ async function main() {
   });
   console.log(`  ✓ INV-0004 (draft)`);
 
+  // --- Sample Reminders for Demo ---
+  await prisma.reminder.createMany({
+    data: [
+      {
+        invoiceId: inv2.id,
+        type: "due_date",
+        scheduledAt: new Date("2026-10-15T09:30:00+05:30"),
+        status: "sent",
+        sentAt: new Date("2026-10-15T09:30:00+05:30"),
+        subject: "Due Today: Invoice INV-0002",
+        message: "Hi Rahul,\n\nInvoice INV-0002 for ₹25,000.00 is due today.\n\nThank you,\nDemo Agency",
+        simulated: true,
+      },
+      {
+        invoiceId: inv2.id,
+        type: "overdue_3d",
+        scheduledAt: new Date("2026-10-18T09:30:00+05:30"),
+        status: "pending",
+        subject: "Payment Reminder: Invoice INV-0002 is 3 days overdue",
+        message: "Hi Rahul,\n\nWe noticed invoice INV-0002 is now 3 days overdue.\n\nThank you,\nDemo Agency",
+        simulated: true,
+      },
+      {
+        invoiceId: inv3.id,
+        type: "before_due_3d",
+        scheduledAt: new Date("2026-11-17T09:30:00+05:30"),
+        status: "pending",
+        subject: "Upcoming Due Date: Invoice INV-0003",
+        message: "Hi Freelance Client,\n\nThis is a friendly reminder that invoice INV-0003 has a balance of ₹8,000.00 due in 3 days.\n\nThank you,\nDemo Agency",
+        simulated: true,
+      },
+    ],
+    skipDuplicates: true,
+  });
+  console.log("  ✓ Sample demo reminders created");
+
   console.log("\n✅ Seed complete!");
   console.log("   Login: demo@collectly.test / demo1234");
 }
