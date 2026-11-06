@@ -138,13 +138,15 @@ model Reminder {
 }
 
 model BusinessSettings {
-  userId              String @id
-  businessName        String @default("")
-  businessEmail       String @default("")
-  address             String @default("")
-  taxInfo             String @default("") // e.g. GST number
-  defaultCurrency     String @default("INR")
-  paymentInstructions String @default("")
+  userId              String   @id
+  businessName        String   @default("")
+  businessEmail       String   @default("")
+  address             String   @default("")
+  taxInfo             String   @default("") // e.g. GST number
+  defaultCurrency     String   @default("INR")
+  paymentInstructions String   @default("")
+  remindersEnabled    Boolean  @default(true)
+  reminderSchedule    String   @default("-3,0,3,7,14")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

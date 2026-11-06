@@ -3,6 +3,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeInvoiceTotals, rupeesToPaise } from "@/lib/money";
+import { scheduleInvoiceReminders } from "@/lib/reminders";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -144,6 +145,9 @@ export async function updateInvoiceAction(
     }
   });
 
+  // Schedule or refresh reminders if issued (Phase 5 Requirement 2)
+  await scheduleInvoiceReminders(invoiceId).catch(() => {});
+
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   return { success: true };
@@ -161,10 +165,16 @@ export async function cancelInvoiceAction(
   });
   if (!invoice) return { error: "Invoice not found." };
 
-  await prisma.invoice.update({
-    where: { id: invoiceId },
-    data: { state: "cancelled" },
-  });
+  await prisma.$transaction([
+    prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { state: "cancelled" },
+    }),
+    prisma.reminder.updateMany({
+      where: { invoiceId, status: "pending" },
+      data: { status: "cancelled" },
+    }),
+  ]);
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
@@ -276,6 +286,14 @@ export async function recordPaymentAction(
           verification: "manual",
         },
       });
+
+      // If invoice is now paid in full, automatically skip remaining pending reminders
+      if (paymentAmountPaise >= balancePaise) {
+        await tx.reminder.updateMany({
+          where: { invoiceId, status: "pending" },
+          data: { status: "skipped" },
+        });
+      }
     });
   } catch (err: any) {
     return { message: err.message || "Failed to record payment." };

@@ -39,6 +39,8 @@ export default async function SettingsPage() {
     taxInfo: businessSettings?.taxInfo || "",
     defaultCurrency: businessSettings?.defaultCurrency || "INR",
     paymentInstructions: businessSettings?.paymentInstructions || "",
+    remindersEnabled: businessSettings?.remindersEnabled ?? true,
+    reminderSchedule: businessSettings?.reminderSchedule || "-3,0,3,7,14",
   };
 
   return (

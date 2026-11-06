@@ -32,6 +32,12 @@ export default async function AppLayout({
               Customers
             </Link>
             <Link
+              href="/reminders"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Reminders
+            </Link>
+            <Link
               href="/settings"
               className="text-sm text-gray-600 hover:text-gray-900"
             >

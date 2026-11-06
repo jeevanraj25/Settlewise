@@ -26,6 +26,8 @@ const businessSettingsSchema = z.object({
   taxInfo: z.string().max(50).default(""), // GSTIN / PAN / Tax info
   defaultCurrency: z.string().max(10).default("INR"),
   paymentInstructions: z.string().max(2000).default(""),
+  remindersEnabled: z.boolean().default(true),
+  reminderSchedule: z.string().default("-3,0,3,7,14"),
 });
 
 export type SettingsFormState = {
@@ -49,6 +51,8 @@ export async function updateBusinessSettingsAction(
     taxInfo: (formData.get("taxInfo") as string ?? "").trim(),
     defaultCurrency: (formData.get("defaultCurrency") as string ?? "INR").trim(),
     paymentInstructions: (formData.get("paymentInstructions") as string ?? "").trim(),
+    remindersEnabled: formData.get("remindersEnabled") === "on" || formData.get("remindersEnabled") === "true",
+    reminderSchedule: (formData.get("reminderSchedule") as string ?? "-3,0,3,7,14").trim(),
   };
 
   const parsed = businessSettingsSchema.safeParse(rawData);

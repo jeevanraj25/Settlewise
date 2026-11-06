@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { computeInvoiceTotals, rupeesToPaise, formatPaise } from "@/lib/money";
 import { generateToken, formatInvoiceNumber, getBaseUrl } from "@/lib/utils";
 import { todayIST, deriveInvoiceStatus, STATUS_META, InvoiceStatus } from "@/lib/invoice-status";
+import { scheduleInvoiceReminders } from "@/lib/reminders";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 
 export const dynamic = "force-dynamic";
@@ -297,6 +298,11 @@ RETURNS: invoice number, customer, total, due date, derived status, and the publ
           return inv;
         });
 
+        // Auto-schedule reminders if enabled (Phase 5 Requirement 2)
+        await scheduleInvoiceReminders(invoice.id).catch((err) =>
+          console.error("[scheduleInvoiceReminders error]", err)
+        );
+
         const status = deriveInvoiceStatus({
           state: invoice.state,
           viewedAt: null,
@@ -326,8 +332,112 @@ RETURNS: invoice number, customer, total, due date, derived status, and the publ
     );
 
     // -----------------------------------------------------------------------
-    // 4. Tool: get_invoices
+    // 4. Tool: get_invoices & list_invoices (alias for backward compatibility)
     // -----------------------------------------------------------------------
+    const getInvoicesSchema = z.object({
+      status: z.enum([
+        "all", "overdue", "sent", "viewed", "partially_paid", "paid", "draft", "cancelled"
+      ]).default("all"),
+      customer_id: z.string().optional().describe("Filter by specific customer ID"),
+      search: z.string().optional().describe("Search term for customer name or invoice number"),
+      overdue_by_days_min: z.number().int().min(1).optional().describe("Minimum days overdue"),
+      from_date: z.string().optional().describe("Filter invoices from date YYYY-MM-DD"),
+      to_date: z.string().optional().describe("Filter invoices up to date YYYY-MM-DD"),
+      limit: z.number().int().min(1).max(50).default(20),
+    });
+
+    const queryInvoices = async (
+      input: {
+        status: "all" | "overdue" | "sent" | "viewed" | "partially_paid" | "paid" | "draft" | "cancelled";
+        customer_id?: string;
+        search?: string;
+        overdue_by_days_min?: number;
+        from_date?: string;
+        to_date?: string;
+        limit: number;
+      },
+      ctx: any
+    ) => {
+      const userId = ctx?.http?.authInfo?.extra?.userId;
+      if (!userId) {
+        return { isError: true, content: [{ type: "text" as const, text: "Unauthorized: Invalid or missing token." }] };
+      }
+
+      const where: any = { userId };
+      if (input.customer_id) where.customerId = input.customer_id;
+      if (input.from_date || input.to_date) {
+        where.invoiceDate = {};
+        if (input.from_date) where.invoiceDate.gte = new Date(`${input.from_date}T00:00:00+05:30`);
+        if (input.to_date) where.invoiceDate.lte = new Date(`${input.to_date}T23:59:59+05:30`);
+      }
+
+      const invoices = await prisma.invoice.findMany({
+        where,
+        include: { customer: true, payments: true },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+
+      const today = todayIST();
+
+      const rows = invoices
+        .map((inv) => {
+          const status = deriveInvoiceStatus({
+            state: inv.state,
+            viewedAt: inv.viewedAt,
+            dueDate: inv.dueDate,
+            totalPaise: inv.totalPaise,
+            payments: inv.payments,
+          });
+          const paidPaise = inv.payments.reduce((s, p) => s + p.amountPaise, 0);
+          const balancePaise = Math.max(0, inv.totalPaise - paidPaise);
+          const dueDateStr = inv.dueDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+          // Calculate days overdue
+          let daysOverdue = 0;
+          if (status === "overdue") {
+            const diffMs = new Date(today).getTime() - new Date(dueDateStr).getTime();
+            daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+          }
+
+          return { inv, status, paidPaise, balancePaise, dueDateStr, daysOverdue };
+        })
+        .filter(({ inv, status, daysOverdue }) => {
+          if (input.status !== "all" && status !== input.status) return false;
+          if (input.overdue_by_days_min !== undefined && daysOverdue < input.overdue_by_days_min) return false;
+          if (input.search) {
+            const q = input.search.toLowerCase();
+            const matchNum = inv.number.toLowerCase().includes(q);
+            const matchCust = inv.customer.name.toLowerCase().includes(q);
+            const matchComp = (inv.customer.companyName || "").toLowerCase().includes(q);
+            if (!matchNum && !matchCust && !matchComp) return false;
+          }
+          return true;
+        })
+        .slice(0, input.limit);
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text" as const, text: "No invoices matched your query." }] };
+      }
+
+      const baseUrl = getBaseUrl();
+      const lines = rows.map(({ inv, status, paidPaise, balancePaise, dueDateStr, daysOverdue }) => {
+        const overdueNote = daysOverdue > 0 ? ` (${daysOverdue}d overdue)` : "";
+        return [
+          `${inv.number} | ${inv.customer.name} | Total: ${formatPaise(inv.totalPaise, inv.currency)} | Paid: ${formatPaise(paidPaise, inv.currency)} | Balance: ${formatPaise(balancePaise, inv.currency)}`,
+          `  Due: ${dueDateStr}${overdueNote} | Status: [${status}]`,
+          `  Link: ${baseUrl}/i/${inv.publicToken}`,
+        ].join("\n");
+      });
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: `Found ${rows.length} invoice(s):\n\n${lines.join("\n\n")}`,
+        }],
+      };
+    };
+
     server.registerTool(
       "get_invoices",
       {
@@ -342,98 +452,20 @@ Filters:
 - from_date / to_date: filter by issue date range YYYY-MM-DD
 Returns: invoice number, customer, total, paid, balance, due date, derived status, hosted link.
         `.trim(),
-        inputSchema: z.object({
-          status: z.enum([
-            "all", "overdue", "sent", "viewed", "partially_paid", "paid", "draft", "cancelled"
-          ]).default("all"),
-          customer_id: z.string().optional().describe("Filter by specific customer ID"),
-          search: z.string().optional().describe("Search term for customer name or invoice number"),
-          overdue_by_days_min: z.number().int().min(1).optional().describe("Minimum days overdue"),
-          from_date: z.string().optional().describe("Filter invoices from date YYYY-MM-DD"),
-          to_date: z.string().optional().describe("Filter invoices up to date YYYY-MM-DD"),
-          limit: z.number().int().min(1).max(50).default(20),
-        }),
+        inputSchema: getInvoicesSchema,
       },
-      async (input, ctx) => {
-        const userId = (ctx as any)?.http?.authInfo?.extra?.userId;
-        if (!userId) {
-          return { isError: true, content: [{ type: "text", text: "Unauthorized: Invalid or missing token." }] };
-        }
+      async (input, ctx) => queryInvoices(input, ctx)
+    );
 
-        const where: any = { userId };
-        if (input.customer_id) where.customerId = input.customer_id;
-        if (input.from_date || input.to_date) {
-          where.invoiceDate = {};
-          if (input.from_date) where.invoiceDate.gte = new Date(`${input.from_date}T00:00:00+05:30`);
-          if (input.to_date) where.invoiceDate.lte = new Date(`${input.to_date}T23:59:59+05:30`);
-        }
-
-        const invoices = await prisma.invoice.findMany({
-          where,
-          include: { customer: true, payments: true },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        });
-
-        const today = todayIST();
-
-        const rows = invoices
-          .map((inv) => {
-            const status = deriveInvoiceStatus({
-              state: inv.state,
-              viewedAt: inv.viewedAt,
-              dueDate: inv.dueDate,
-              totalPaise: inv.totalPaise,
-              payments: inv.payments,
-            });
-            const paidPaise = inv.payments.reduce((s, p) => s + p.amountPaise, 0);
-            const balancePaise = Math.max(0, inv.totalPaise - paidPaise);
-            const dueDateStr = inv.dueDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-
-            // Calculate days overdue
-            let daysOverdue = 0;
-            if (status === "overdue") {
-              const diffMs = new Date(today).getTime() - new Date(dueDateStr).getTime();
-              daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-            }
-
-            return { inv, status, paidPaise, balancePaise, dueDateStr, daysOverdue };
-          })
-          .filter(({ inv, status, daysOverdue }) => {
-            if (input.status !== "all" && status !== input.status) return false;
-            if (input.overdue_by_days_min !== undefined && daysOverdue < input.overdue_by_days_min) return false;
-            if (input.search) {
-              const q = input.search.toLowerCase();
-              const matchNum = inv.number.toLowerCase().includes(q);
-              const matchCust = inv.customer.name.toLowerCase().includes(q);
-              const matchComp = (inv.customer.companyName || "").toLowerCase().includes(q);
-              if (!matchNum && !matchCust && !matchComp) return false;
-            }
-            return true;
-          })
-          .slice(0, input.limit);
-
-        if (rows.length === 0) {
-          return { content: [{ type: "text", text: "No invoices matched your query." }] };
-        }
-
-        const baseUrl = getBaseUrl();
-        const lines = rows.map(({ inv, status, paidPaise, balancePaise, dueDateStr, daysOverdue }) => {
-          const overdueNote = daysOverdue > 0 ? ` (${daysOverdue}d overdue)` : "";
-          return [
-            `${inv.number} | ${inv.customer.name} | Total: ${formatPaise(inv.totalPaise, inv.currency)} | Paid: ${formatPaise(paidPaise, inv.currency)} | Balance: ${formatPaise(balancePaise, inv.currency)}`,
-            `  Due: ${dueDateStr}${overdueNote} | Status: [${status}]`,
-            `  Link: ${baseUrl}/i/${inv.publicToken}`,
-          ].join("\n");
-        });
-
-        return {
-          content: [{
-            type: "text",
-            text: `Found ${rows.length} invoice(s):\n\n${lines.join("\n\n")}`,
-          }],
-        };
-      }
+    // Backward-compatibility alias for connectors cached with 'list_invoices'
+    server.registerTool(
+      "list_invoices",
+      {
+        title: "List Invoices (Alias)",
+        description: `Query and filter invoices in Settlewise (alias for get_invoices).`,
+        inputSchema: getInvoicesSchema,
+      },
+      async (input, ctx) => queryInvoices(input, ctx)
     );
 
     // -----------------------------------------------------------------------
@@ -642,6 +674,14 @@ Automatically labelled "Manually recorded" in accordance with financial audit ru
                 verification: "manual",
               },
             });
+
+            // If invoice is fully settled, skip remaining pending reminders
+            if (paymentAmountPaise >= remainingBalancePaise) {
+              await tx.reminder.updateMany({
+                where: { invoiceId: invoice.id, status: "pending" },
+                data: { status: "skipped" },
+              });
+            }
 
             const newPaidPaise = currentPaidPaise + paymentAmountPaise;
             const newBalancePaise = Math.max(0, current.totalPaise - newPaidPaise);
